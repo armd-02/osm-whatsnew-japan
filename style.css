@@ -893,49 +893,12 @@ button {
 }
 
 
-.header-menu-toggle {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border: 1px solid #a9c2b9;
-  border-radius: 8px;
-  background: #fff;
-  color: #155e4a;
-  cursor: pointer
-}
-
-
-.header-menu-toggle svg {
-  width: 23px;
-  height: 23px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round
-}
-
-
-.header-menu-toggle:hover {
-  border-color: #5f9986;
-  background: #edf7f3
-}
-
-
-.header-menu-toggle:focus-visible {
-  outline: 3px solid rgba(8, 127, 91, .28);
-  outline-offset: 2px
-}
-
-
 @media(max-width:700px) {
   header {
     min-height: 62px;
     height: auto;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 5px 12px;
     padding: 5px 10px;
     position: relative;
@@ -990,50 +953,59 @@ button {
   }
 
 
-  .header-menu-toggle {
-    display: inline-flex;
-    grid-column: 3;
-    grid-row: 1;
-    justify-self: end
-  }
-
-
   header nav.header-view-tabs {
-    position: absolute;
-    z-index: 21;
-    top: calc(100% - 4px);
-    right: 10px;
-    display: none;
-    min-width: 150px;
-    padding: 6px;
-    border: 1px solid #a9c2b9;
-    border-radius: 9px;
-    background: #fff;
-    box-shadow: 0 8px 24px rgba(14, 45, 37, .22)
+    position: static;
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    margin: 3px 0 0;
   }
-
-
-  header nav.header-view-tabs.is-open {
-    display: flex;
-    flex-direction: column
-  }
-
 
   header nav.header-view-tabs .header-view-tab {
-    width: 100%;
-    min-height: 38px;
-    margin: 0;
-    padding: 8px 13px;
-    justify-content: flex-start;
-    border: 0;
-    border-radius: 6px;
-    font-size: 13px
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 4px;
+    font-size: 13px;
   }
 
 
-  header nav.header-view-tabs .header-view-tab+.header-view-tab {
-    margin: 2px 0 0
-  }
+}
 
+.page-view-guide {
+  margin: 10px 0 14px;
+  color: #52675f;
+  font-size: 13px;
+  line-height: 1.6;
+}
 
+.map-guide-participate {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid #b8cbc3;
+  border-radius: 8px;
+  background: #edf7f3;
+}
+
+.map-guide-participate h3 {
+  margin: 0 0 6px;
+}
+
+.map-guide-participate a {
+  color: #075f49;
+  font-weight: 700;
+}
+
+.page-participate {
+  margin: -6px 0 14px;
+  color: #52675f;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.page-participate a {
+  display: inline-block;
+  color: #075f49;
+  font-weight: 700;
+  text-underline-offset: 2px;
 }

@@ -35,24 +35,23 @@
   <meta name="twitter:description" content="日本全国または都道府県を選び、OpenStreetMapで更新された地物を、代表タグ・編集者・日付別に集計できます。">
   <meta name="twitter:image" content="https://armd-01.sakura.ne.jp/whatsnew/image/whatsnew.png">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style.css?v=20260814-1">
+  <link rel="stylesheet" href="style.css?v=20261025-2">
   <link rel="stylesheet" href="details.css?v=20261025-19">
 </head>
 <body class="details-page">
   <header>
     <img class="site-logo" src="image/site.png" width="480" height="480" alt="">
-    <div><h1><button id="map-guide-open" class="site-info-trigger" type="button" aria-haspopup="dialog" aria-label="このサイトの見方を開く"><span>OSM What’s New Japan</span></button></h1><small>OpenStreetMap 新着・更新POIダッシュボード</small></div>
-    <button class="header-menu-toggle" type="button" aria-expanded="false" aria-controls="header-view-tabs" aria-label="画面メニューを開く">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-    </button>
+    <div><h1><button id="map-guide-open" class="site-info-trigger" type="button" aria-haspopup="dialog" aria-label="このサイトの見方を開く"><span>OSM What’s New Japan</span></button></h1><small>OpenStreetMap 最近追加・更新された場所</small></div>
     <nav id="header-view-tabs" class="header-view-tabs" aria-label="画面切り替え">
       <a class="header-view-tab" href="index.html">地図</a>
       <a class="header-view-tab" href="details.html" aria-current="page">分析</a>
-      <a class="header-view-tab" href="coverage.html">密度</a>
+      <a class="header-view-tab" href="coverage.html">更新密度</a>
       <a class="header-view-tab" href="profile.html">マッパー</a>
     </nav>
   </header>
   <main class="wide-page-main">
+    <p class="page-view-guide">地域や種類ごとの更新の偏りから、次に調べたい場所・施設を探せます。</p>
+    <p class="page-participate">気になる場所は、自分でも追加・修正できます。 <a href="https://learnosm.org/ja/beginner/" target="_blank" rel="noopener noreferrer">はじめての地図編集（日本語ガイド）<span class="visually-hidden">（新しいタブで開く）</span></a></p>
     <section class="prefecture-map-panel primary-map-panel map-surface">
       <div class="map-guide map-overlay-panel map-overlay-panel-top-left"><div class="map-guide-title"><h2 id="details-map-title" class="region-summary-title">地域集計(全国)</h2></div><form id="filter" class="map-guide-dates"><label><span>期間</span><select id="days" class="form-select form-select-compact"><option value="7" selected>1週間</option><option value="14">2週間</option><option value="30">1ヵ月</option><option value="183">半年</option><option value="365">1年</option><option value="custom">任意</option></select></label><label><input id="from" type="date" required aria-label="開始日"></label><span class="map-guide-date-separator mobile-hidden" aria-hidden="true">〜</span><label><input id="to" type="date" required disabled aria-label="終了日"></label></form></div>
       <p id="status" class="map-status">データを読み込んでいます…</p>
@@ -62,8 +61,8 @@
     <div class="map-followup-content">
     <section class="summary-section summary-grid content-panel" aria-label="集計概要">
       <p id="period"></p>
-      <article class="summary-item summary-item-highlight"><span>更新地物</span><strong id="total">—</strong></article>
-      <a class="summary-item summary-card" href="#mapper-ranking"><span>マッパー</span><strong id="mappers">—</strong><small>グラフへ移動</small></a>
+      <article class="summary-item summary-item-highlight"><span>追加・更新された場所など</span><strong id="total">—</strong></article>
+      <a class="summary-item summary-card" href="#mapper-ranking"><span>地図を編集した人</span><strong id="mappers">—</strong><small>グラフへ移動</small></a>
     </section>
     <div class="content-grid">
       <section id="tag-region-heatmap" class="content-panel"><div class="ranking-heading section-heading"><h3>地域 × 代表タグ</h3><button class="csv-icon-button" type="button" data-csv-list="tag-regions" disabled aria-label="地域・代表タグ別集計をCSVでダウンロード" title="地域・代表タグ別集計をCSVでダウンロード"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div><p id="tag-region-scope" class="hint"></p><p class="hint">タグごとに、件数が多い地域ほど濃い色で表示します。0件は白色です。「その他」は上位5タグ以外の件数、「合計」は全タグの件数です。都道府県が判明した地物を対象とし、更新が少ない地域が未整備とは限りません。</p><p id="tag-region-status" class="hint" role="status"></p><div id="tag-region-chart" class="tag-region-scroll" role="region" aria-label="地域・代表タグ別の更新件数。縦横にスクロールできます" tabindex="0"></div></section>
@@ -79,7 +78,7 @@
   <script src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
   <script src="modal.js?v=20260814-7"></script>
-  <script src="help.js?v=20261025-1"></script>
+  <script src="help.js?v=20261025-2"></script>
   <script src="map-view.js?v=20260811-1"></script>
   <script src="details.js?v=20261025-19"></script>
 </body>

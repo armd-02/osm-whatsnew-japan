@@ -36,7 +36,7 @@
   <meta name="twitter:description" content="OpenStreetMapで日本国内に追加・編集された地物を、地図とタイムスケールで検索し、更新状況を集計できます。">
   <meta name="twitter:image" content="https://armd-01.sakura.ne.jp/whatsnew/image/whatsnew.png">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style.css?v=20260814-1">
+  <link rel="stylesheet" href="style.css?v=20261025-2">
   <link rel="stylesheet" href="index.css?v=20260919-5">
 </head>
 
@@ -45,22 +45,19 @@
     <img class="site-logo" src="image/site.png" width="480" height="480" alt="">
     <div>
       <h1><button id="map-guide-open" class="site-info-trigger" type="button" aria-haspopup="dialog" aria-label="このサイトの見方を開く"><span>OSM What’s New Japan</span></button></h1>
-      <small>OpenStreetMap 新着・更新POIダッシュボード</small>
+      <small>OpenStreetMap 最近追加・更新された場所</small>
     </div>
-    <button class="header-menu-toggle" type="button" aria-expanded="false" aria-controls="header-view-tabs" aria-label="画面メニューを開く">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-    </button>
     <nav id="header-view-tabs" class="header-view-tabs" aria-label="画面切り替え">
       <a class="header-view-tab" href="index.html" aria-current="page">地図</a>
       <a class="header-view-tab" href="details.html">分析</a>
-      <a class="header-view-tab" href="coverage.html">密度</a>
+      <a class="header-view-tab" href="coverage.html">更新密度</a>
       <a class="header-view-tab" href="profile.html">マッパー</a>
     </nav>
 
   </header>
   <section class="index-intro" aria-labelledby="index-intro-title">
     <h2 id="index-intro-title">日本の地図は、どこが新しくなった？</h2>
-    <p><span>OpenStreetMapで最近追加・更新された場所を地図から確認できます。</span><span>地域ごとの傾向や、マッパーごとの活動も見られます。</span></p>
+    <p><span>自分の街の近くで、誰かが地図を更新しているかもしれません。</span><span>地図で場所を見つけ、分析や更新密度で地域の動きを調べられます。</span></p>
     <button id="index-intro-close" type="button" aria-label="案内を閉じる" title="案内を閉じる">×</button>
   </section>
   <main>
@@ -171,7 +168,7 @@
   </main>
   <script src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js"></script>
   <script src="modal.js?v=20260814-7"></script>
-  <script src="help.js?v=20261025-1"></script>
+  <script src="help.js?v=20261025-2"></script>
   <script src="map-view.js?v=20260811-1"></script>
   <script src="app.js?v=20260919-7"></script>
 </body>
