@@ -897,7 +897,7 @@ async function loadTagRegionHeatmap(entries, baseQuery, selectedRegion) {
   const regions = heatmapRegions();
   document.querySelector('#tag-region-chart').replaceChildren();
   clearCsvList('tag-regions');
-  document.querySelector('#tag-region-scope').textContent = `${selectedRegion || '全国'}で件数の多い上位${top.length}タグと、その他・合計を全都道府県で比較します。色の濃さは列ごとに比較し、各列の最大件数が最も濃い色になります。縦横にスクロールできます。`;
+  document.querySelector('#tag-region-scope').textContent = `${selectedRegion || '全国'}の上位${top.length}タグと、その他・合計を都道府県別に比較します。`;
   if (!top.length) {
     status.textContent = 'この条件の更新地物はありません。';
     return;
