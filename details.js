@@ -36,14 +36,22 @@ function summaryCountWithDailyAverage(count, unit) {
   const start = Date.parse(`${fromElement.value}T00:00:00Z`);
   const end = Date.parse(`${toElement.value}T00:00:00Z`);
   const days = Math.max(1, (end - start) / (24 * 60 * 60 * 1000) + 1);
-  return `${number(count)}${unit}（${number(Math.round(count / days))}${unit}/日）`;
+  const summary = document.createElement('span');
+  summary.className = 'summary-count';
+  const total = document.createElement('span');
+  total.textContent = `${number(count)}${unit}`;
+  const average = document.createElement('span');
+  average.className = 'summary-count-average';
+  average.textContent = `（${number(Math.round(count / days))}${unit}/日）`;
+  summary.append(total, average);
+  return summary;
 }
 
 function updateTotalSummary(total, creates, modifies) {
   const element = document.querySelector('#total');
   const main = document.createElement('span');
   main.className = 'summary-total-main';
-  main.textContent = summaryCountWithDailyAverage(total, '件');
+  main.replaceChildren(summaryCountWithDailyAverage(total, '件'));
   const detail = document.createElement('span');
   detail.className = 'summary-total-detail';
   detail.textContent = `（新規${number(creates)}件/更新${number(modifies)}件）`;
@@ -990,7 +998,7 @@ function render(rows) {
   const creates = rows.filter(row => row.action === 'create').length;
   const mapperRows = countMappers(rows);
   updateTotalSummary(total, creates, total - creates);
-  document.querySelector('#mappers').textContent = summaryCountWithDailyAverage(mapperRows.length, '人');
+  document.querySelector('#mappers').replaceChildren(summaryCountWithDailyAverage(mapperRows.length, '人'));
 
   const categories = countBy(rows, row => `${row.type}=${row.value}`);
   currentCategoryEntries = categories.slice(0, 100);
@@ -1062,7 +1070,7 @@ function renderNationwide(data) {
   const modifies = dailyRows.reduce((sum, row) => sum + row.modify, 0);
   const mapperCount = Number(data.mapperCount) || 0;
   updateTotalSummary(total, creates, modifies);
-  document.querySelector('#mappers').textContent = summaryCountWithDailyAverage(mapperCount, '人');
+  document.querySelector('#mappers').replaceChildren(summaryCountWithDailyAverage(mapperCount, '人'));
 
   const prefectures = (data.prefectures || []).map(row => ({
     key: row.name,

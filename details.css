@@ -545,3 +545,19 @@
   position: sticky;
   left: 6px;
 }
+
+.details-page .summary-count {
+  container-type: inline-size;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: .25em;
+}
+
+.details-page .summary-count > span {
+  white-space: nowrap;
+}
+
+.details-page .summary-count-average {
+  font-size: min(1em, 14cqw);
+}
