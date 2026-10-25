@@ -14,28 +14,36 @@ let apiUrl = '';
 let categoryMapperRequest = 0;
 const csvLists = {};
 const charts = {};
+let reportRequestId = 0;
+let tagRegionRequestId = 0;
+let tagRegionController = null;
+const tagRegionCache = new Map();
 const chartRenderers = {};
 const chartCompanionRenderers = {};
 const CREATE_COLOR = '#177866';
 const MODIFY_COLOR = '#c45f32';
-const EASY_CHANGESET_VIEWER_URL = 'https://k-sakanoshita.github.io/Easy_Changeset_Viewer/';
 const prefectureCountsCache = new Map();
 const PREFECTURE_FILL_LAYER = 'prefecture-select-fill';
 const PREFECTURE_OUTLINE_LAYER = 'prefecture-select-outline';
 const PREFECTURE_SELECTED_LAYER = 'prefecture-selected-fill';
 const PREFECTURE_NAME_EXPRESSION = ['coalesce', ['get', 'name:ja'], ['get', 'name']];
 const prefectureName = feature => String(feature?.properties?.['name:ja'] || feature?.properties?.name || '');
-const easyChangesetViewerUrl = changesetId =>
-  `${EASY_CHANGESET_VIEWER_URL}?changeset=${encodeURIComponent(changesetId)}`;
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[character]));
 const number = value => Number(value).toLocaleString('ja-JP');
 const percent = (value, total) => total ? `${(value / total * 100).toFixed(1)}%` : '0.0%';
+function summaryCountWithDailyAverage(count, unit) {
+  const start = Date.parse(`${fromElement.value}T00:00:00Z`);
+  const end = Date.parse(`${toElement.value}T00:00:00Z`);
+  const days = Math.max(1, (end - start) / (24 * 60 * 60 * 1000) + 1);
+  return `${number(count)}${unit}（${number(Math.round(count / days))}${unit}/日）`;
+}
+
 function updateTotalSummary(total, creates, modifies) {
   const element = document.querySelector('#total');
   const main = document.createElement('span');
   main.className = 'summary-total-main';
-  main.textContent = `${number(total)}件`;
+  main.textContent = summaryCountWithDailyAverage(total, '件');
   const detail = document.createElement('span');
   detail.className = 'summary-total-detail';
   detail.textContent = `（新規${number(creates)}件/更新${number(modifies)}件）`;
@@ -99,8 +107,8 @@ function mapperCsvRows(entries, total) {
   ];
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
+async function fetchJson(url, options) {
+  const response = await fetch(url, options);
   const text = await response.text();
   let data;
   try { data = JSON.parse(text); } catch { throw new Error(`API error ${response.status}`); }
@@ -183,7 +191,25 @@ function selectedPrefectureName() {
   return selectedPrefecture;
 }
 
+function prefectureFromCode(value) {
+  const match = /^(?:JP-)?(\d{1,2})$/.exec(String(value || '').trim().toUpperCase());
+  if (!match) return '';
+  const isoCode = `JP-${match[1].padStart(2, '0')}`;
+  const feature = prefectureFeatures.find(item => item.properties['ISO3166-2'] === isoCode);
+  return feature ? prefectureName(feature) : '';
+}
+
+function updatePrefectureUrl() {
+  const feature = prefectureFeatures.find(item => prefectureName(item) === selectedPrefecture);
+  const code = String(feature?.properties['ISO3166-2'] || '').replace(/^JP-/, '');
+  const url = new URL(window.location.href);
+  if (code) url.searchParams.set('prefecture', code);
+  else url.searchParams.delete('prefecture');
+  if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url.href);
+}
+
 function updateMapSelection() {
+  updatePrefectureUrl();
   nationwideButton.disabled = !selectedPrefecture;
   detailsMapTitle.textContent = `地域集計(${selectedPrefecture || '全国'})`;
   if (!prefectureMap?.getLayer(PREFECTURE_SELECTED_LAYER)) return;
@@ -350,7 +376,8 @@ function initializeChartActionFilters() {
     'category-chart',
     'mapper-chart',
     'daily-chart',
-    'changeset-chart',
+    'cumulative-chart',
+    'tag-region-chart',
     'category-mapper-chart',
   ];
   chartIds.forEach(id => {
@@ -451,10 +478,6 @@ function renderHorizontalChart(id, entries, labelBuilder, datasetLabel, onSelect
   };
   canvas.addEventListener('click', canvas.horizontalLabelClickHandler);
   canvas.addEventListener('mousemove', canvas.horizontalLabelMoveHandler);
-}
-
-function openEasyChangesetViewer(entry) {
-  window.open(easyChangesetViewerUrl(entry.key), '_blank', 'noopener,noreferrer');
 }
 
 function renderMapperChart(entries, id = 'mapper-chart') {
@@ -599,18 +622,6 @@ function updateDailyCompanions(rows) {
   ]);
 }
 
-function updateChangesetCompanions(entries) {
-  const filtered = filterChartEntries(entries, selectedChartAction('changeset-chart')).slice(0, 100);
-  document.querySelector('#changeset-table').innerHTML = filtered.map((entry, index) => {
-    const editor = entry.row.editorName || '不明';
-    return `<tr><td>${index + 1}</td><td><a href="${easyChangesetViewerUrl(entry.key)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.key)}</a></td><td>${escapeHtml(editor)}</td><td>${number(entry.count)}</td></tr>`;
-  }).join('');
-  setCsvList('changesets', [
-    ['順位', '変更セット', 'マッパー', '件数'],
-    ...filtered.map((entry, index) => [index + 1, entry.key, entry.row.editorName || '不明', entry.count]),
-  ]);
-}
-
 function filterRankingRows(input) {
   const tableBody = document.querySelector(`#${input.dataset.filterTarget}`);
   if (!tableBody) return;
@@ -731,6 +742,199 @@ function renderDailyChart(dailyRows) {
   });
 }
 
+function buildCumulativeData(dailyRows, action = 'both') {
+  return {
+    labels: dailyRows.map(row => row.date.replace(/-/g, '/')),
+    datasets: [
+      {label: '新規', field: 'create', color: CREATE_COLOR},
+      {label: '更新', field: 'modify', color: MODIFY_COLOR},
+    ].filter(entry => action === 'both' || entry.field === action).map(({label, field, color}) => {
+      let total = 0;
+      return {
+        label,
+        data: dailyRows.map(row => (total += Number(row[field]) || 0)),
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: 1,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+        fill: true,
+        tension: 0,
+      };
+    }),
+  };
+}
+
+function renderCumulativeChart(dailyRows) {
+  const id = 'cumulative-chart';
+  chartRenderers[id] = () => renderCumulativeChart(dailyRows);
+  charts[id]?.destroy();
+  const action = selectedChartAction(id);
+  const data = buildCumulativeData(dailyRows, action);
+  charts[id] = new Chart(document.querySelector(`#${id}`), {
+    type: 'line',
+    data,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: {mode: 'index', intersect: false},
+      scales: {
+        x: {title: {display: true, text: '日付'}, ticks: {maxTicksLimit: 8}},
+        y: {stacked: action === 'both', beginAtZero: true, title: {display: true, text: '累積地物数（件）'}, ticks: {precision: 0}},
+      },
+    },
+  });
+  setCsvList('cumulative', [
+    ['日付', ...data.datasets.map(dataset => `累積${dataset.label}`), '累積合計'],
+    ...dailyRows.map((row, index) => {
+      const counts = data.datasets.map(dataset => dataset.data[index]);
+      return [row.date, ...counts, counts.reduce((sum, count) => sum + count, 0)];
+    }),
+  ]);
+  document.querySelector('#cumulative-status').textContent = data.datasets.some(dataset => dataset.data.some(count => count > 0))
+    ? '' : 'この条件の更新地物はありません。';
+}
+
+function heatmapRegions() {
+  return [...prefectureFeatures]
+    .sort((left, right) => String(left.properties['ISO3166-2']).localeCompare(String(right.properties['ISO3166-2'])))
+    .map(prefectureName);
+}
+
+function heatmapRegionGroup(name) {
+  const feature = prefectureFeatures.find(item => prefectureName(item) === name);
+  const code = Number(String(feature?.properties['ISO3166-2'] || '').replace('JP-', ''));
+  if (code < 1) return 'その他の地域';
+  const groups = [[7, '北海道・東北'], [14, '関東'], [23, '中部'], [30, '近畿'], [35, '中国'], [39, '四国'], [47, '九州・沖縄']];
+  return groups.find(([lastCode]) => code <= lastCode)?.[1] || 'その他の地域';
+}
+
+function renderTagRegionHeatmap(entries, regionCounts, regions, selectedRegion, totalCounts) {
+  const table = document.createElement('table');
+  table.className = 'tag-region-table';
+  const head = document.createElement('thead');
+  const header = document.createElement('tr');
+  const corner = document.createElement('th');
+  corner.scope = 'col';
+  corner.textContent = '都道府県／代表タグ';
+  header.append(corner);
+  const labels = [...entries.map(entry => categoryName(entry.row)), 'その他', '合計'];
+  labels.forEach(label => {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = label;
+    header.append(cell);
+  });
+  head.append(header);
+  table.append(head);
+  let body = null;
+  let previousGroup = '';
+  const csv = [['都道府県', ...entries.map(entry => `${categoryName(entry.row)} (${entry.key})`), 'その他', '合計']];
+  const counts = entries.map((entry, index) => regions.map(region => regionCounts[index].get(region) || 0));
+  const totals = regions.map(region => totalCounts.get(region) || 0);
+  const others = totals.map((total, row) => Math.max(0, total - counts.reduce((sum, column) => sum + column[row], 0)));
+  counts.push(others, totals);
+  const maxima = counts.map(values => Math.max(0, ...values));
+  regions.forEach((region, rowIndex) => {
+    const group = heatmapRegionGroup(region);
+    if (group !== previousGroup) {
+      body = document.createElement('tbody');
+      const section = document.createElement('tr');
+      section.className = 'tag-region-section';
+      const heading = document.createElement('th');
+      heading.scope = 'rowgroup';
+      heading.colSpan = labels.length + 1;
+      const label = document.createElement('span');
+      label.textContent = group;
+      heading.append(label);
+      section.append(heading);
+      body.append(section);
+      table.append(body);
+      previousGroup = group;
+    }
+    const row = document.createElement('tr');
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = region;
+    if (region === selectedRegion) heading.className = 'selected-region';
+    row.append(heading);
+    const values = labels.map((label, column) => {
+      const count = counts[column][rowIndex];
+      const cell = document.createElement('td');
+      // Compare prefectures within each tag (column), independently of other tags.
+      const intensity = maxima[column] ? count / maxima[column] : 0;
+      cell.style.backgroundColor = count ? `hsl(163, 60%, ${95 - intensity * 65}%)` : '#fff';
+      cell.style.color = intensity > .6 ? '#fff' : '#173f34';
+      cell.textContent = number(count);
+      cell.title = `${region}・${label}: ${number(count)}件`;
+      if (region === selectedRegion) cell.className = 'selected-region';
+      row.append(cell);
+      return count;
+    });
+    csv.push([region, ...values]);
+    body.append(row);
+  });
+  document.querySelector('#tag-region-chart').replaceChildren(table);
+  setCsvList('tag-regions', csv);
+}
+
+async function loadTagRegionHeatmap(entries, baseQuery, selectedRegion) {
+  const requestId = ++tagRegionRequestId;
+  tagRegionController?.abort();
+  const controller = new AbortController();
+  tagRegionController = controller;
+  const status = document.querySelector('#tag-region-status');
+  const top = filterChartEntries(entries, selectedChartAction('tag-region-chart')).slice(0, 5);
+  const regions = heatmapRegions();
+  document.querySelector('#tag-region-chart').replaceChildren();
+  clearCsvList('tag-regions');
+  document.querySelector('#tag-region-scope').textContent = `${selectedRegion || '全国'}で件数の多い上位${top.length}タグと、その他・合計を全都道府県で比較します。色の濃さは列ごとに比較し、各列の最大件数が最も濃い色になります。縦横にスクロールできます。`;
+  if (!top.length) {
+    status.textContent = 'この条件の更新地物はありません。';
+    return;
+  }
+  status.textContent = '地域・代表タグ別の件数を集計中…';
+  const results = new Array(top.length + 1);
+  const action = selectedChartAction('tag-region-chart');
+  let next = 0;
+  try {
+    const worker = async () => {
+      while (next < results.length) {
+        controller.signal.throwIfAborted();
+        const index = next++;
+        const query = new URLSearchParams(baseQuery);
+        query.delete('prefecture');
+        query.set('mode', 'prefectures');
+        if (index < top.length) {
+          query.set('category', top[index].row.type);
+          query.set('category_value', top[index].row.value);
+        }
+        if (action !== 'both') query.set('action', action);
+        const url = `${apiUrl}?${query}`;
+        let cached = tagRegionCache.get(url);
+        if (!cached || Date.now() - cached.time > 5 * 60 * 1000) {
+          const data = await fetchJson(url, {signal: controller.signal});
+          if (!Array.isArray(data.items)) throw new Error('地域別の集計結果が不正です。');
+          cached = {time: Date.now(), counts: new Map(data.items.map(row => [row.prefecture, Number(row.count) || 0]))};
+          tagRegionCache.delete(url);
+          tagRegionCache.set(url, cached);
+          if (tagRegionCache.size > 100) tagRegionCache.delete(tagRegionCache.keys().next().value);
+        }
+        results[index] = cached.counts;
+      }
+    };
+    await Promise.all(Array.from({length: Math.min(3, results.length)}, worker));
+    if (requestId !== tagRegionRequestId) return;
+    renderTagRegionHeatmap(top, results.slice(0, top.length), regions, selectedRegion, results[top.length]);
+    status.textContent = '';
+  } catch (error) {
+    if (requestId !== tagRegionRequestId) return;
+    controller.abort();
+    status.textContent = `地域・代表タグ別の件数を取得できませんでした: ${error.message}`;
+  }
+}
+
 function buildDailyMapperRows(rows) {
   const daily = new Map();
   const start = new Date(fromElement.value + 'T00:00:00Z');
@@ -782,13 +986,11 @@ function renderDailyMapperChart(rows) {
 
 function render(rows) {
   document.querySelector('#prefecture-ranking').hidden = true;
-  document.querySelector('#changeset-ranking').hidden = false;
   const total = rows.length;
   const creates = rows.filter(row => row.action === 'create').length;
   const mapperRows = countMappers(rows);
-  const changesets = countBy(rows.filter(row => row.changeset), row => row.changeset);
   updateTotalSummary(total, creates, total - creates);
-  document.querySelector('#mappers').textContent = `${number(mapperRows.length)}人`;
+  document.querySelector('#mappers').textContent = summaryCountWithDailyAverage(mapperRows.length, '人');
 
   const categories = countBy(rows, row => `${row.type}=${row.value}`);
   currentCategoryEntries = categories.slice(0, 100);
@@ -808,6 +1010,7 @@ function render(rows) {
 
   const dailyRows = buildDailyRows(rows);
   renderDailyChart(dailyRows);
+  renderCumulativeChart(dailyRows);
   renderDailyMapperChart(buildDailyMapperRows(rows));
   document.querySelector('#daily-table').innerHTML = dailyRows.map(row =>
     `<tr><td>${escapeHtml(row.date.replace(/-/g, '/'))}</td><td>${number(row.create)}</td><td>${number(row.modify)}</td><td>${number(row.create + row.modify)}</td></tr>`).join('');
@@ -817,28 +1020,15 @@ function render(rows) {
   ]);
 
 
-  renderHorizontalChart('changeset-chart', changesets, entry => `#${entry.key}`, '更新地物数', null, openEasyChangesetViewer);
-  const displayedChangesets = changesets.slice(0, 100);
-  document.querySelector('#changeset-table').innerHTML = displayedChangesets.map((entry, index) => {
-    const editor = entry.row.editorName || '不明';
-    return `<tr><td>${index + 1}</td><td><a href="${easyChangesetViewerUrl(entry.key)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.key)}</a></td><td>${escapeHtml(editor)}</td><td>${number(entry.count)}</td></tr>`;
-  }).join('');
-  setCsvList('changesets', [
-    ['順位', '変更セット', 'マッパー', '件数'],
-    ...displayedChangesets.map((entry, index) => [
-      index + 1, entry.key, entry.row.editorName || '不明', entry.count,
-    ]),
-  ]);
   const reportTotals = {both: total, create: creates, modify: total - creates};
   chartCompanionRenderers['category-chart'] = () => updateCategoryCompanions(categories, reportTotals);
   chartCompanionRenderers['mapper-chart'] = () => updateMapperCompanions(mapperRows, 'mappers', 'mapper-chart', reportTotals);
   chartCompanionRenderers['daily-chart'] = () => updateDailyCompanions(dailyRows);
-  chartCompanionRenderers['changeset-chart'] = () => updateChangesetCompanions(changesets);
   chartCompanionRenderers['category-chart']();
   chartCompanionRenderers['mapper-chart']();
   chartCompanionRenderers['daily-chart']();
-  chartCompanionRenderers['changeset-chart']();
   applyRankingFilters();
+  return categories;
 }
 
 function buildAggregateDailyRows(rows) {
@@ -865,22 +1055,14 @@ function buildAggregateDailyRows(rows) {
 
 function renderNationwide(data) {
   document.querySelector('#prefecture-ranking').hidden = false;
-  document.querySelector('#changeset-ranking').hidden = false;
 
   const total = Number(data.total) || 0;
   const dailyRows = buildAggregateDailyRows(data.daily || []);
   const creates = dailyRows.reduce((sum, row) => sum + row.create, 0);
   const modifies = dailyRows.reduce((sum, row) => sum + row.modify, 0);
   const mapperCount = Number(data.mapperCount) || 0;
-  const changesets = (data.changesets || []).map(row => ({
-    key: row.changeset,
-    count: Number(row.count) || 0,
-    creates: row.creates === undefined ? undefined : Number(row.creates) || 0,
-    modifies: row.modifies === undefined ? undefined : Number(row.modifies) || 0,
-    row: {editorName: row.editorName},
-  }));
   updateTotalSummary(total, creates, modifies);
-  document.querySelector('#mappers').textContent = `${number(mapperCount)}人`;
+  document.querySelector('#mappers').textContent = summaryCountWithDailyAverage(mapperCount, '人');
 
   const prefectures = (data.prefectures || []).map(row => ({
     key: row.name,
@@ -921,19 +1103,8 @@ function renderNationwide(data) {
   document.querySelector('#mapper-table').innerHTML = mapperTableRows(mappers, total);
   setCsvList('mappers', mapperCsvRows(mappers, total));
 
-  renderHorizontalChart('changeset-chart', changesets, entry => `#${entry.key}`, '更新地物数', null, openEasyChangesetViewer);
-  document.querySelector('#changeset-table').innerHTML = changesets.map((entry, index) => {
-    const editor = entry.row.editorName || '不明';
-    return `<tr><td>${index + 1}</td><td><a href="${easyChangesetViewerUrl(entry.key)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.key)}</a></td><td>${escapeHtml(editor)}</td><td>${number(entry.count)}</td></tr>`;
-  }).join('');
-  setCsvList('changesets', [
-    ['順位', '変更セット', 'マッパー', '件数'],
-    ...changesets.map((entry, index) => [
-      index + 1, entry.key, entry.row.editorName || '不明', entry.count,
-    ]),
-  ]);
-
   renderDailyChart(dailyRows);
+  renderCumulativeChart(dailyRows);
   renderDailyMapperChart(dailyRows);
   document.querySelector('#daily-table').innerHTML = dailyRows.map(row =>
     `<tr><td>${escapeHtml(row.date.replace(/-/g, '/'))}</td><td>${number(row.create)}</td><td>${number(row.modify)}</td><td>${number(row.create + row.modify)}</td></tr>`).join('');
@@ -946,21 +1117,33 @@ function renderNationwide(data) {
   chartCompanionRenderers['category-chart'] = () => updateCategoryCompanions(categories, reportTotals);
   chartCompanionRenderers['mapper-chart'] = () => updateMapperCompanions(mappers, 'mappers', 'mapper-chart', reportTotals);
   chartCompanionRenderers['daily-chart'] = () => updateDailyCompanions(dailyRows);
-  chartCompanionRenderers['changeset-chart'] = () => updateChangesetCompanions(changesets);
   chartCompanionRenderers['prefecture-chart']();
   chartCompanionRenderers['category-chart']();
   chartCompanionRenderers['mapper-chart']();
   chartCompanionRenderers['daily-chart']();
-  chartCompanionRenderers['changeset-chart']();
   applyRankingFilters();
+  return categories;
 }
 async function loadReport() {
+  const requestId = ++reportRequestId;
+  ++tagRegionRequestId;
+  tagRegionController?.abort();
+  delete chartRenderers['tag-region-chart'];
+  document.querySelector('#tag-region-chart').replaceChildren();
+  document.querySelector('#tag-region-scope').textContent = '';
+  document.querySelector('#tag-region-status').textContent = '地域・代表タグ別の件数を読み込んでいます…';
+  charts['cumulative-chart']?.destroy();
+  delete charts['cumulative-chart'];
+  document.querySelector('#cumulative-status').textContent = '累積グラフを読み込んでいます…';
   statusElement.textContent = '集計中…';
   resetCsvLists();
   resetCategoryMapperRanking();
   try {
     if (!fromElement.value || !toElement.value || fromElement.value > toElement.value) {
       throw new Error('集計条件を正しく選択してください。');
+    }
+    if (fromElement.value > latestReportDate() || toElement.value > latestReportDate()) {
+      throw new Error('集計期間は昨日までの日付を指定してください。');
     }
     const name = selectedPrefectureName();
     const query = new URLSearchParams({
@@ -976,17 +1159,19 @@ async function loadReport() {
       : fetchJson(`${apiUrl}?${nationwideQuery}`);
     const [data, prefectureCounts] = await Promise.all([reportRequest, loadPrefectureCounts()]);
     if (!name) await fillMapperActionCounts(data, query);
+    if (requestId !== reportRequestId) return;
     renderPrefectureColors(prefectureCounts);
 
-    if (name) {
-      render(data.rows);
-    } else {
-      renderNationwide(data);
-    }
+    const heatmapEntries = name ? render(data.rows) : renderNationwide(data);
     statusElement.textContent = '';
     document.querySelector('#period').textContent = `集計期間：${formatJstDateTime(data.meta.periodStart)} ～ ${formatJstDateTime(data.meta.periodEnd)}`;
     updateMapSelection();
+    chartRenderers['tag-region-chart'] = () => loadTagRegionHeatmap(heatmapEntries, query, name);
+    chartRenderers['tag-region-chart']();
   } catch (error) {
+    if (requestId !== reportRequestId) return;
+    document.querySelector('#tag-region-status').textContent = '地域・代表タグ別の件数を表示できませんでした。';
+    document.querySelector('#cumulative-status').textContent = '累積グラフを表示できませんでした。';
     statusElement.textContent = `取得できませんでした: ${error.message}`;
   }
 }
@@ -995,10 +1180,41 @@ function formatInputDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function applyPresetDates() {
-  const end = new Date(); const start = new Date(end);
-  start.setDate(start.getDate() - Number(daysElement.value));
-  fromElement.value = formatInputDate(start); toElement.value = formatInputDate(end); fromElement.max = toElement.value;
+function shiftInputDate(value, days) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function latestReportDate() {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en', {
+    year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tokyo',
+  }).formatToParts(new Date()).map(part => [part.type, part.value]));
+  return shiftInputDate(`${parts.year}-${parts.month}-${parts.day}`, -1);
+}
+
+function applyPresetDates(reset = false) {
+  const custom = daysElement.value === 'custom';
+  const latest = latestReportDate();
+  fromElement.disabled = false;
+  toElement.disabled = !custom;
+  toElement.max = latest;
+
+  if (custom) {
+    fromElement.max = latest;
+    if (!fromElement.value || fromElement.value > latest) fromElement.value = latest;
+    if (!toElement.value || toElement.value > latest) toElement.value = latest;
+    return;
+  }
+
+  const days = Number(daysElement.value);
+  const latestStart = shiftInputDate(latest, 1 - days);
+  fromElement.max = latestStart;
+  if (reset || !fromElement.value || fromElement.value > latestStart) {
+    fromElement.value = latestStart;
+  }
+  // Keep the full selected period within completed JST calendar days.
+  toElement.value = shiftInputDate(fromElement.value, days - 1);
 }
 
 async function initialize() {
@@ -1017,8 +1233,10 @@ async function initialize() {
   }
   prefectureFeatures = geojson.features.sort((a, b) => prefectureName(a).localeCompare(prefectureName(b), 'ja'));
   categoryRules = categories.category || {};
+  selectedPrefecture = prefectureFromCode(new URL(window.location.href).searchParams.get('prefecture'));
 
   initializePrefectureMap(geojson);
+  updateMapSelection();
   await loadReport();
 }
 
@@ -1027,14 +1245,21 @@ nationwideButton.addEventListener('click', () => {
   updateMapSelection();
   loadReport();
 });
-daysElement.addEventListener('change', () => { applyPresetDates(); loadReport(); });
+daysElement.addEventListener('change', () => {
+  applyPresetDates(true);
+  if (daysElement.value !== 'custom') loadReport();
+});
 
 fromElement.addEventListener('change', () => {
-  if (fromElement.value > toElement.value) toElement.value = fromElement.value;
+  applyPresetDates();
+  if (daysElement.value === 'custom' && fromElement.value > toElement.value) {
+    toElement.value = fromElement.value;
+  }
   loadReport();
 });
 toElement.addEventListener('change', () => {
-  fromElement.max = toElement.value;
+  if (daysElement.value !== 'custom') return;
+  applyPresetDates();
   if (fromElement.value > toElement.value) fromElement.value = toElement.value;
   loadReport();
 });
